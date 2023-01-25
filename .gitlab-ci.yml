@@ -1,0 +1,46 @@
+default:
+  image: openjdk:11
+  tags:
+    - g13runner
+
+stages:
+  - build
+  - test
+  - deploy
+
+maven-build:
+  stage: build
+  image: maven:latest
+  script:
+    - echo "Building the pipeline"
+    - mvn clean package -DskipTests=true
+  artifacts:
+    paths:
+      - target/*.jar
+
+include:
+  - template: Code-Quality.gitlab-ci.yml
+
+test:
+  stage: test
+  image: maven:latest
+  script:
+    - echo "Running tests"
+    - mvn test
+
+
+
+deploy:
+  stage: deploy
+  image: python:3
+  script:
+    # Setting up aws config
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set default.region $AWS_REGION
+    # Copy the application artifacts to S3
+    - aws s3 cp target/*.jar s3://$S3_BUCKET_NAME/$APP_NAME/
+    # SSH into the EC2 instance and deploy the application
+    - aws s3 cp s3://academic-planner-dev/academic-planner-backend/academic-planner-backend-0.0.1-SNAPSHOT.jar ./
+    - nohup java -jar academic-planner-backend-0.0.1-SNAPSHOT.jar > output.log 2>&1 &
+    - sleep 5
